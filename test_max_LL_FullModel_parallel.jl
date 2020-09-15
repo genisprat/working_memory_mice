@@ -1,16 +1,22 @@
 using PyPlot
-using Statistics
-using Optim
-using ForwardDiff
+@everywhere using Statistics
+@everywhere using Optim
+@everywhere using ForwardDiff
 using JLD
-using LineSearches
 
-path_functions="/home/genis/wm_mice/"
-path_figures="/home/genis/wm_mice/figures/"
+using SharedArrays
+using Distributed
+rmprocs(workers())
+addprocs(2)
 
-include(path_functions*"functions_wm_mice.jl")
-include(path_functions*"function_simulations.jl")
-include(path_functions*"functions_mle.jl")
+@everywhere path_functions="/home/genis/wm_mice/"
+@everywhere path_figures="/home/genis/wm_mice/figures/"
+
+@everywhere include(path_functions*"functions_wm_mice.jl")
+@everywhere include(path_functions*"function_simulations.jl")
+@everywhere include(path_functions*"functions_mle.jl")
+
+
 
 
 PDwDw=0.9
@@ -87,35 +93,37 @@ POriginal=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewa
 LlOriginal=ComputeNegativeLogLikelihood(POriginal,T,choices,PiInitialOriginal)
 
 
-Nconditions=2
+Nconditions=4
 Nstates=2
-XInitial=zeros(Nconditions,length(lower))
-TInitialAll=zeros(Nconditions,Nstates,Nstates)
-ConfideceIntervals=zeros(Nconditions,length(lower)+Nstates)
-Ll=zeros(Nconditions)
-ParamFit=zeros(Nconditions,length(lower)+Nstates)
-PiInitial=zeros(Nconditions,Nstates)
+XInitial=SharedArray{Float64}(Nconditions,length(lower))#zeros(Nconditions,length(lower))
+TInitialAll=SharedArray{Float64}(Nconditions,Nstates,Nstates)#zeros(Nconditions,Nstates,Nstates)
+ConfideceIntervals=SharedArray{Float64}(Nconditions,length(lower)+Nstates)#zeros(Nconditions,length(lower)+Nstates)
+Ll=SharedArray{Float64}(Nconditions)#zeros(Nconditions)
+ParamFit=SharedArray{Float64}(Nconditions,length(lower)+Nstates)#zeros(Nconditions,length(lower)+Nstates)
+PiInitial=SharedArray{Float64}(Nconditions,Nstates)#zeros(Nconditions,Nstates)
 
 
-for icondition in 1:Nconditions
+@sync @distributed for icondition in 1:Nconditions
     println("icondition:", icondition)
     #random initial conditions
     for iparam in 1:length(lower)
         XInitial[icondition,iparam]=lower[iparam]+ (upper[iparam]-lower[iparam])*rand()
     end
-
+    #
     pdwdw=rand()
     pbiasbias=rand()
     TInitial=[pdwdw 1-pdwdw ; 1-pbiasbias pbiasbias]
+    #println(TInitial)
     TInitialAll[icondition,:,:]=TInitial
     aux=rand()
     PiInitial[icondition,1]=aux
     PiInitial[icondition,2]=1-aux
-
+    #
     PNew,TNew,PiNew,Ll[icondition],ParamFit[icondition,:],xfit=fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rewards,args,XInitial[icondition,:],lower,upper,TInitial,PiInitial[icondition,:],PossibleOutputs,consts,y)
     ConfideceIntervals[icondition,:]=ComputeConfidenceIntervals(stim,delays,idelays,choices,past_choices,past_rewards,args,xfit,lower,upper,TNew,PiNew,PossibleOutputs,consts,y)
 
 end
+#println("pollas")
 
 
 # LL=zeros(length(PDwVector),length(PBiasVector))

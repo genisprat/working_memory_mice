@@ -40,6 +40,48 @@ function make_dict2(args,x)
 end
 
 
+function make_dict(parameters,y,constans=0,c=0)
+    if constans==0
+        args=parameters
+        x=y
+    else
+        args=vcat(parameters,constans)
+        x=vcat(y,c)
+    end
+    nargs = 0
+    for i in [1:length(args);]
+        if typeof(args[i])==String # if the entry in args is a string, then there's one corresponding scalar entry in x0
+            nargs += 1
+        else
+            nargs += args[i][2]    # otherwise, the entry in args should be a  [varnamestring, nvals] vector,
+            # indicating that the next nvals entries in x0 are all a single vector, belonging to variable
+            # with name varnamestring.
+        end
+    end
+    if nargs != length(x)
+        error("Oy! args and x must indicate the same total number of variables!")
+    end
+
+    i=1
+    param=Dict()
+    for  (iarg,arg) in enumerate(args)
+        if typeof(arg)==String
+            a=x[i:i]
+            #println(a," ",a[1]," ",x[i:i][1])
+            param[arg]=x[i:i][1]
+            i+=1
+        else
+            j=arg[2]
+            param[arg[1]]=x[i:i+j-1]
+            i+=j
+        end
+    end
+
+    return param
+end
+
+
+
 
 
 
@@ -49,9 +91,19 @@ end
 function initial_transition(mu,c2,xL,xR,x0,sigma)
 
     c2_sqrt=sqrt(c2)
+
     #println("arg1: ",c2_sqrt/sigma*(x0+mu/c2))
     #println("initial_trnas param: ",mu," ",c2," ",xL," ",xR," ",x0," ",sigma)
-    return ( erf(c2_sqrt/sigma*(x0+mu/c2)) - erf(c2_sqrt/sigma*(xL+mu/c2)) )/(  erf(c2_sqrt/sigma*(xR+mu/c2)) - erf(c2_sqrt/sigma*(xL+mu/c2)) )
+    if x0>xR
+        #println(xR,"xR x0 ",x0)
+        return 1.0
+    elseif x0<xL
+        #println(xR,"xR x0 ",x0)
+        return 0.0
+    else
+
+        return ( erf(c2_sqrt/sigma*(x0+mu/c2)) - erf(c2_sqrt/sigma*(xL+mu/c2)) )/(  erf(c2_sqrt/sigma*(xR+mu/c2)) - erf(c2_sqrt/sigma*(xL+mu/c2)) )
+    end
     #println("pr2: ",pr)
 end
 
@@ -285,7 +337,7 @@ function update_PDw(PDwDw,PBiasBias,PDw,PrDw,PrBias,c)
 end
 
 
-function ComputePR(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
+function ComputePR(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts=0,y=0)
     """
     Computes PR for all trials
     stim: It is an Array with value 1 if stimulus ir R and 2 if stimulus is L. 1 x Ntrials
@@ -299,7 +351,7 @@ function ComputePR(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
     """
 
     Ntrials=length(stim)
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     PDw=zeros(typeof(x[1]),Ntrials+1)
     PDw[1]=0.5
     Pr=zeros(typeof(x[1]),Ntrials)
@@ -335,7 +387,7 @@ function ComputePR(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
 
 end
 
-function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
+function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts=0,y=0)
     """
     Computes PR for all trials
     stim: It is an Array with value 1 if stimulus ir R and 2 if stimulus is L. 1 x Ntrials
@@ -349,10 +401,12 @@ function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewar
     """
     Ntrials=length(stim)
     Nout=2
+
     P=zeros(typeof(x[1]),Ntrials,Nout,Nout)
 
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     PrDw=zeros(typeof(x[1]),2,length(delays))
+    #println(param)
     #println("sigma inside: ",param["sigma"])
     #Compute prob of Right for each combination of stimulus and delay###
 
@@ -445,9 +499,9 @@ end
 
 
 
-function create_data(Ntrials,delays,args,x)
+function create_data(Ntrials,delays,T,args,x,consts=0,y=0)
 
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     stim=rand([1,2],Ntrials)
     MU=[-1,1]
     past_choices=rand(-1:2:1,(Ntrials,10))
@@ -475,7 +529,7 @@ function create_data(Ntrials,delays,args,x)
             #compute Pr for the DW module
             Pr=PrDw[stim[itrial],idelays[itrial]]
             #update state
-            if rand()<param["PDwDw"]
+            if rand()<T[1,1]
                 state[itrial+1]=1
             else
                 state[itrial+1]=2
@@ -485,7 +539,7 @@ function create_data(Ntrials,delays,args,x)
             #compute Pr for the bias module
             Pr=history_bias_module_1stim(param["beta_w"],param["beta_l"],param["tau_w"],param["tau_l"],past_choices[itrial,:],past_rewards[itrial,:])
             #update state
-            if rand()<param["PBiasBias"]
+            if rand()<T[2,2]
                 state[itrial+1]=2
             else
                 state[itrial+1]=1
@@ -510,9 +564,9 @@ end
 
 
 
-function create_data_history_bias(Ntrials,args,x)
+function create_data_history_bias(Ntrials,args,x,consts=0,y=0)
 
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     past_choices=rand(-1:2:1,(Ntrials,10))
     past_rewards=rand(0:1,(Ntrials,10))
     choices=zeros(Ntrials)
@@ -534,10 +588,10 @@ end
 
 
 
-function Compute_negative_LL_history_bias(choices,past_choices,past_rewards,args,x)
+function Compute_negative_LL_history_bias(choices,past_choices,past_rewards,args,x,consts=0,y=0)
 
     #println(x[2]," param: ", x[6])
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     Ntrials=(length(past_choices[:,1]) )
     Pr=zeros(typeof(x[1]),Ntrials)
     for itrial in 1:Ntrials
@@ -562,9 +616,9 @@ end
 
 
 
-function create_data_WM(Ntrials,delays,args,x)
+function create_data_WM(Ntrials,delays,args,x,consts=0,y=0)
 
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     stim=rand([1,2],Ntrials)
     MU=[-1,1]
     idelays=sample(1:length(delays),Ntrials)
@@ -618,7 +672,7 @@ function Compute_negative_LL_WM_module(stim,delays,idelays,choices,args,x)
 end
 
 
-function ComputePR_WM(stim,delays,idelays,args,x)
+function ComputePR_WM(stim,delays,idelays,args,x,consts=0,y=0)
     """
     Computes PR for all trials for the wm memory module
     stim: It is an Array with value 1 if stimulus ir R and 2 if stimulus is L. 1 x Ntrials
@@ -629,7 +683,7 @@ function ComputePR_WM(stim,delays,idelays,args,x)
     """
 
     Ntrials=length(stim)
-    param=make_dict2(args,x)
+    param=make_dict(args,x,consts,y)
     PDw=zeros(typeof(x[1]),Ntrials+1)
     PDw[1]=0.5
     Pr=zeros(typeof(x[1]),Ntrials)

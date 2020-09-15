@@ -1,10 +1,12 @@
-using ForwardDiff
-using StatsBase
-
-
-path="/home/genis/wm_mice/"
-include(path*"functions_wm_mice.jl")
-
+@everywhere using ForwardDiff
+@everywhere using StatsBase
+@everywhere using LineSearches
+@everywhere using Optim
+@everywhere using ForwardDiff
+@everywhere using LinearAlgebra
+@everywhere path="/home/genis/wm_mice/"
+@everywhere include(path*"functions_wm_mice.jl")
+const tol=1e-3
 
 
 
@@ -24,6 +26,7 @@ function ForwardPass(P,T,choices,InitalP)
     """
     Nout=length(P[1,1,:])
     Nstate=length(T[1,:])
+    Ntrials=length(choices)
     PFwdState=zeros(typeof(P[1]),Ntrials,Nout)
     Norm_coeficcient=zeros(typeof(P[1]),Ntrials)
 
@@ -50,6 +53,7 @@ end
 
 function ComputeNegativeLogLikelihood(P,T,choices,InitalP)
     ll,alpha=ForwardPass(P,T,choices,InitalP)
+    #println("ll: ", ll)
     return ll
 end
 
@@ -142,22 +146,20 @@ end
 
 
 
-function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,past_rewards,T,InitialP,args,x,xx,lower,upper)
+function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,past_rewards,T,InitialP,args,x,lower,upper,consts=0,y=0)
         # println("hola",x[1])
-        # z=zeros(typeof(x[1]),length(x))
+        z=zeros(typeof(x[1]),length(x))
+        z[:]=x[:]
         # for i in 1:length(x)
         #     z[i]=x[i]
         # end
-        function MaxEmission(y)
+        function MaxEmission(z)
 
             #println("hola2")
-            z=zeros(typeof(y[1]),length(x))
-            z[:]=x[:]
-            #println("hola3")
-            z[6]=y[1]
+
             #println("hola4")
             #println("sigma: ",y[1])
-            P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z)
+            P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z,consts,y)
             #println("P1: ",P[1]," z: ",z)
 
             ll=ComputeNegativeLogLikelihood(P,T,choices,InitialP)
@@ -170,23 +172,21 @@ function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,
         #res=optimize(MaxEmission, xx, LBFGS(); autodiff = :forward)
         #lower=[0.05]
         #upper=[3]
-        println("xx: ",xx[1]," lower: ",lower," upper: ",upper)
+        #println("xx: ",x," lower: ",lower," upper: ",upper)
 
-        res=optimize(MaxEmission,lower,upper, xx, Fminbox(LBFGS(linesearch = BackTracking(order=2))),Optim.Options(show_trace=false); autodiff = :forward)
+        res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking(order=2))),Optim.Options(show_trace=false); autodiff = :forward)
         #res=optimize(MaxEmission,lower,upper, xx, Fminbox(LBFGS()),Optim.Options(show_trace=true); autodiff = :forward)
         #res=optimize(MaxEmission, xx, LBFGS(); autodiff = :forward)
-        x2=zeros(length(x))
-        x2[:]=x[:]
-        x2[6]=res.minimizer[1]
+        z=res.minimizer
 
-        Q=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x2)
+        Q=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z,consts,y)
         #res=optimize(MaxEmission, xx, LBFGS())
 
         return res.minimizer,Q,res.minimum
 end
 
 
-function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rewards,args,x,TInitial,PiInitial,PossibleOutputs,tol,xx,lower,upper)
+function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rewards,args,x,lower,upper,TInitial,PiInitial,PossibleOutputs,consts=0,y=0)
 
     """
     Function that computes the ForwardPass, the negative log-likelihood,
@@ -203,8 +203,9 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
 
     """
 
-
-
+    println("hello I am fit")
+    z=zeros(typeof(x[1]),length(x))
+    z[:]=x[:]
 
     Nstates=length(TInitial[1,:])
     Nout=length(PossibleOutputs)
@@ -215,8 +216,8 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
     TNew=zeros(Nstates,Nstates)
     PNew=zeros(Nstates,Nout)
     PiNew=zero(Nstates)
-
-    POld=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
+    #println("const: ",consts)
+    POld=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts,y)
     TOld=TInitial[:,:]
     PiOld=PiInitial[:]
     ll=0.0
@@ -245,10 +246,10 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
 
         ######## Compute new emission probabilities ##########
 
-        minimizer,PNew,llNew=MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,past_rewards,TOld,POld,args,x,xx,lower,upper)
-        xx=minimizer
-        println("sigma:", xx[1])
-        println("llNew",llNew)
+        minimizer,PNew,llNew=MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,past_rewards,TOld,POld,args,z,lower,upper,consts,y)
+        z=minimizer
+        # println("sigma:", z[1]," ",z)
+        # println("llNew",llNew)
         println("T:", TNew)
 
 
@@ -285,9 +286,51 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
 
     ll=ComputeNegativeLogLikelihood(PNew,TNew,choices,PiNew)
     #println("iter: ",iter, " ll: ",ll)
-    param=[TNew[1,1],TNew[2,2],xx]
+    param=vcat(TNew[1,1],TNew[2,2],z)
 
-    return PNew,TNew,PiNew,ll,param
+    return PNew,TNew,PiNew,ll,param,z
 
+
+end
+
+
+
+
+function ComputeConfidenceIntervals(stim,delays,idelays,choices,past_choices,past_rewards,args,x,lower,upper,TFit,PiFit,PossibleOutputs,consts=0,y=0,z_aux=1.96)
+    println(consts,y)
+    Nstates=length(TFit[1,:])
+    Nout=length(PossibleOutputs)
+    PARAM=zeros(typeof(TFit[1]),Nstates+length(x))
+    for istate in 1:Nstates
+        PARAM[istate]=TFit[istate,istate]
+    end
+
+
+    for iparam in 1:length(x)
+        PARAM[iparam+Nstates]=x[iparam]
+    end
+
+    function ComputeNegativeLogLikelihood2(PARAM)
+        T=zeros(typeof(PARAM[1]),Nstates,Nstates)
+
+        for istate in 1:Nstates  #only valid for Nstates=2
+            T[istate,istate]=PARAM[istate]
+        end
+        T[1,2]=1-T[1,1]
+        T[2,1]=1-T[2,2]
+
+        PFit=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,PARAM[Nstates+1:end],consts,y)
+
+
+        return ComputeNegativeLogLikelihood(PFit,T,choices,PiFit)
+
+    end
+
+    H=ForwardDiff.hessian(ComputeNegativeLogLikelihood2, PARAM)
+
+    HI=inv(H)
+    ci=z_aux.*sqrt.(diag(HI))
+
+    return ci
 
 end
