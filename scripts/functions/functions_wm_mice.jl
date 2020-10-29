@@ -1,6 +1,6 @@
 
 using SpecialFunctions
-using PyPlot
+#using PyPlot
 using ForwardDiff
 using StatsBase
 
@@ -18,7 +18,9 @@ function make_dict2(args,x)
         end
     end
     if nargs != length(x)
+
         error("Oy! args and x must indicate the same total number of variables!")
+
     end
 
     i=1
@@ -26,7 +28,6 @@ function make_dict2(args,x)
     for  (iarg,arg) in enumerate(args)
         if typeof(arg)==String
             a=x[i:i]
-            #println(a," ",a[1]," ",x[i:i][1])
             param[arg]=x[i:i][1]
             i+=1
         else
@@ -59,6 +60,7 @@ function make_dict(parameters,y,constans=0,c=0)
         end
     end
     if nargs != length(x)
+
         error("Oy! args and x must indicate the same total number of variables!")
     end
 
@@ -67,7 +69,6 @@ function make_dict(parameters,y,constans=0,c=0)
     for  (iarg,arg) in enumerate(args)
         if typeof(arg)==String
             a=x[i:i]
-            #println(a," ",a[1]," ",x[i:i][1])
             param[arg]=x[i:i][1]
             i+=1
         else
@@ -90,21 +91,21 @@ end
 
 function initial_transition(mu,c2,xL,xR,x0,sigma)
 
-    c2_sqrt=sqrt(c2)
-
-    #println("arg1: ",c2_sqrt/sigma*(x0+mu/c2))
-    #println("initial_trnas param: ",mu," ",c2," ",xL," ",xR," ",x0," ",sigma)
+    if c2>0
+        c2_sqrt=sqrt(c2)
+    else
+        c2_sqrt=NaN
+        error("c2 negative", c2, "mu:",mu,"xL ",xL,"xR: ",xR,"x0: ", x0, "sigma: ",sigma)
+    end
     if x0>xR
-        #println(xR,"xR x0 ",x0)
         return 1.0
     elseif x0<xL
-        #println(xR,"xR x0 ",x0)
         return 0.0
     else
 
         return ( erf(c2_sqrt/sigma*(x0+mu/c2)) - erf(c2_sqrt/sigma*(xL+mu/c2)) )/(  erf(c2_sqrt/sigma*(xR+mu/c2)) - erf(c2_sqrt/sigma*(xL+mu/c2)) )
     end
-    #println("pr2: ",pr)
+
 end
 
 function roots_DW(coef)
@@ -122,22 +123,37 @@ function roots_DW(coef)
     roots=zeros(typeof(d),3)
     delta=-4*a*c^3-27*(a^2)*d^2
     #roots_aux=zeros(typeof(roots[1]),3)
-    #println(delta)
     if sign(delta)==-1
         roots[1]=-sign(d)
         roots[2]=NaN
         roots[3]=NaN
-        println("delta: ", delta," ",d)
+        error("delta: ", delta," ",d," c ",c," a: ", a)
+    elseif coef[1]==0
+        roots[1]=-sqrt(coef[2]/coef[3])
+        roots[2]=0
+        roots[3]=sqrt(coef[2]/coef[3])
     else
         p=c/a
         q=d/a
-        phi=acos( sqrt(  (27.0/4.0)*(q^2)/(-p^3) ) )
+        aux_sqrt=(27.0/4.0)*(q^2)/(-p^3)
+        if aux_sqrt>0
+            phi=acos( sqrt( aux_sqrt  ) )
+        else
+            error("phi negative", coef[1]," ",coef[2]," ",coef[3])
+        end
         # k=np.array(range(3))
         K=[0,1,2]
+        if p<0
 
-        k0=2.0*sqrt(-p/3.0)*cos( phi/3.0+2.0943951*0)
-        k1=2.0*sqrt(-p/3.0)*cos( phi/3.0+2.0943951*1)
-        k2=2.0*sqrt(-p/3.0)*cos( phi/3.0+2.0943951*2)
+            k0=2.0*sqrt(-p/3.0)*cos( phi/3.0+2.0943951*0)
+            k1=2.0*sqrt(-p/3.0)*cos( phi/3.0+2.0943951*1)
+            k2=2.0*sqrt(-p/3.0)*cos( phi/3.0+2.0943951*2)
+        else
+            error("p negative", coef[1]," ",coef[2]," ",coef[3])
+            k0=NaN
+            k1=NaN
+            k2=NaN
+        end
         #println("typeof k: ", typeof(k0))
 
         # for k in K
@@ -175,7 +191,14 @@ end
 function max_mu(coef)
     c=-coef[2]
     a=coef[3]
-    return sqrt(-4.0*c^3/(27.0*a))
+    aux=-4.0*c^3/(27.0*a)
+    if aux>0
+        max_mu2=sqrt(aux)
+    else
+        max_mu2=NaN
+        error("Negative sqrt in max_mu",coef[1]," ",coef[2]," ",coef[3])
+    end
+    return max_mu2
 end
 
 
@@ -222,7 +245,9 @@ function Transition_rates(coef,xL,xM,xR,sigma)
     # print delta_xRxM,delta_xLxM,D
     kxLxR=aux_kxLxR*exp(-delta_xRxM/D)
     kxRxL=aux_kxRxL*exp(-delta_xLxM/D)
-
+    if kxLxR!=kxLxR || kxRxL!=kxRxL
+        error("NaN in transitions rates:  coef: ",coef, " sigma: ",sigma," k:", kxLxR," k:", kxRxL, "D: ",D, "kxLxR: ",kxLxR," kxRxL: ",kxRxL," delta_xRxM: ",delta_xRxM," delta_xRxM: ",delta_xRxM)
+    end
     # print kxLxR,kxRxL
     return kxRxL,kxLxR
     # return kxRxL,kxLxR
@@ -241,10 +266,10 @@ function Transition_probabilites(coef,xL,xM,xR,sigma,t)
     kxRxL,kxLxR=Transition_rates(coef,xL,xM,xR,sigma)
     #println("Trans: ",kxRxL," ",kxLxR)
     # print coef,xL,xM,xR,sigma,t
-    if kxLxR+kxRxL > 1e-6
-        prs=kxRxL/(kxLxR+kxRxL)
 
-    else
+    prs=kxRxL/(kxLxR+kxRxL)
+
+    if prs!=prs
         if coef[1]>0
             prs=1.0 #The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
         else
@@ -252,9 +277,30 @@ function Transition_probabilites(coef,xL,xM,xR,sigma,t)
         end
     end
     aux=exp(-(kxLxR+kxRxL)*t)
+    if aux!=aux
+        maximum_mu=max_mu(coef)
+        if coef[1]>maximum_mu
+            prr=1.0
+            prl=1 #The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
+        elseif coef[1]<-maximum_mu
+            prr=0.
+            prl=0. #The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
+
+        else
+            prr=1.0
+            prl=0.0
+        end
+    else
+        prr=prs+aux*(1-prs)
+        prl=prs*(1-aux)
+
+    end
     #println(aux)
-    prr=prs+aux*(1-prs)
-    prl=prs*(1-aux)
+
+
+    if prr!=prr || prl!=prl || prs!=prs
+        error("NaN in transitions probabilities:", " prs:",prs, " aux:",aux, " prr:",prr," prl:",prl," coef: ",coef, " sigma: ",sigma," k:", kxLxR," k:", kxRxL)
+    end
     # except OverflowError:
     #     print -(kxLxR+kxRxL)*t,t,kxLxR,'putaaaaaaaaaaaaa'
     #     prr=prs
@@ -268,31 +314,36 @@ function PR_1stim(coef,sigma,x0,mu_b,delay)
     mu=coef[1]+mu_b
     c2=coef[2]
     c4=coef[3]
+
     maximum_mu=max_mu(coef)
     pr=0
     pr0=0
-    if mu>maximum_mu || mu_b>maximum_mu
+    if mu>=maximum_mu || mu_b>=maximum_mu
         pr0=1.0
-    elseif mu < -maximum_mu || mu_b<-maximum_mu
+    elseif mu <= -maximum_mu || mu_b <= -maximum_mu
         pr0=0.0
-
+        #println("puta pr0=0")
     else
+        #println("puta")
         roots=roots_DW([mu,c2,c4])
+        #println(roots," c2",c2," c4",c4)
         pr0=initial_transition(mu,c2,roots[1],roots[3],x0,sigma)
+        if pr0!=pr0
+            error("Pr0 is NaN",roots)
+        end
     end
-
-    if mu_b>maximum_mu
+    #println("hol")
+    if mu_b >= maximum_mu
         pr=1.0
-    elseif  mu_b<-maximum_mu
+    elseif  mu_b <= -maximum_mu
         pr=0.0
-
     else
         coef_wm=[mu_b,c2,c4]
+        #println("coef",coef_wm)
         roots=roots_DW(coef_wm)
+        #println(roots," c22",c2," c44",c4)
         prr,prl=Transition_probabilites(coef_wm,roots[1],roots[2],roots[3],sigma,delay)
-        #println("prr prl: ",prr," ",prl)
         pr=pr0*prr+(1-pr0)*prl
-        #println("pr0: ", pr0)
     end
 
     return pr
@@ -375,9 +426,7 @@ function ComputePR(stim,delays,idelays,choices,past_choices,past_rewards,args,x,
     for itrial in 1:Ntrials
 
         PrBias[itrial]=history_bias_module_1stim(param["beta_w"],param["beta_l"],param["tau_w"],param["tau_l"],past_choices[itrial,:],past_rewards[itrial,:])
-        #println("Prbias: ",PrBias[itrial])
-        #println("PrDw: ",PrDw[stim[itrial],idelays[itrial]])
-        #println("PDw: ",PDw[itrial]," ", param["PDwDw"] )
+
 
         Pr[itrial]=PDw[itrial]*PrDw[stim[itrial],idelays[itrial]]+(1-PDw[itrial])*PrBias[itrial]
         PDw[itrial+1]=update_PDw(param["PDwDw"],param["PBiasBias"],PDw[itrial],PrDw[stim[itrial],idelays[itrial]],PrBias[itrial],choices[itrial])
@@ -399,18 +448,23 @@ function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewar
     args: Name of parameters
     x: List of parameters
     """
+
+    if x!=x
+        error("Nans in x", x)
+    end
     Ntrials=length(stim)
     Nout=2
-
     P=zeros(typeof(x[1]),Ntrials,Nout,Nout)
 
     param=make_dict(args,x,consts,y)
+    if param!=param
+        error("Nans in param",param)
+    end
+    param["sigma"]=sqrt(param["sigma"]^2) #make sure it is not negative in case i do not use FminBox
     PrDw=zeros(typeof(x[1]),2,length(delays))
-    #println(param)
-    #println("sigma inside: ",param["sigma"])
     #Compute prob of Right for each combination of stimulus and delay###
 
-
+    #println("param: ",param)
     ###### Pr for working memory module, module=1 #################
     MU=[-1,1]
     for idelay in 1:length(delays)
@@ -450,7 +504,6 @@ end
 
 function Compute_negative_LL(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
 
-    #println(x[2]," param: ", x[6])
     Pr=ComputePR(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
     Ntrials=length(Pr)
     ll=0
@@ -487,7 +540,6 @@ end
 function compute_negativ_LL_gradient_hess(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
 
     function LL_f(x)
-        # println("param: ",x)
         return Compute_negative_LL(stim,delays,idelays,choices,past_choices,past_rewards,args,x)
     end
 
@@ -590,7 +642,6 @@ end
 
 function Compute_negative_LL_history_bias(choices,past_choices,past_rewards,args,x,consts=0,y=0)
 
-    #println(x[2]," param: ", x[6])
     param=make_dict(args,x,consts,y)
     Ntrials=(length(past_choices[:,1]) )
     Pr=zeros(typeof(x[1]),Ntrials)
@@ -656,7 +707,6 @@ end
 
 function Compute_negative_LL_WM_module(stim,delays,idelays,choices,args,x)
 
-    #println(x[2]," param: ", x[6])
     Pr=ComputePR_WM(stim,delays,idelays,args,x)
     Ntrials=length(Pr)
     ll=0
@@ -759,7 +809,6 @@ function Compute_negative_LL_hmm_module(PDwDw,PBiasBias,PrDw,PrBias,choices)
     LL=zeros(typeof(PDwDw),length(choices))
     for itrial in 1:length(choices)
         if itrial==1
-            println("puta")
             pstate[itrial]=update_PDw(PDwDw,PBiasBias,pstate[itrial],PrDw,PrBias,choices[itrial])
         else
             pstate[itrial]=update_PDw(PDwDw,PBiasBias,pstate[itrial-1],PrDw,PrBias,choices[itrial])
@@ -783,13 +832,11 @@ end
 # coef=[0.0,1,1]
 # roots=zeros(3)
 # roots_DW(coef,roots)
-# println("done: ",roots)
 # pr=zeros(Float64,1)
 # pr[1]=0
 # sigma=0.3
 # x0=0.0
 # initial_transition(coef[1],coef[2],roots[1],roots[3],x0,sigma)
-# println("pr: ",pr)
 #
 # x=-2:0.1:2
 # y=zeros(length(x))

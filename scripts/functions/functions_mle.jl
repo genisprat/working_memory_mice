@@ -2,10 +2,15 @@
 @everywhere using StatsBase
 @everywhere using LineSearches
 @everywhere using Optim
-@everywhere using ForwardDiff
 @everywhere using LinearAlgebra
-@everywhere path="/home/genis/wm_mice/"
-@everywhere include(path*"functions_wm_mice.jl")
+
+#cluster
+@everywhere path_functions="/home/hcli64/hcli64751/wm_mice/scripts/functions/"
+#local
+#@everywhere path_functions="/home/genis/wm_mice/scripts/functions/"
+
+
+@everywhere include(path_functions*"functions_wm_mice.jl")
 const tol=1e-3
 
 
@@ -37,7 +42,6 @@ function ForwardPass(P,T,choices,InitalP)
             else
                 aux_sum=sum([ PFwdState[itrial-1,k]*T[k,istate] for k in 1:Nout])
             end
-            #println("P: ",P," istate ",istate," choices: ",choices[itrial])
             PFwdState[itrial,istate]=aux_sum*P[itrial,istate,choices[itrial]]
 
         end
@@ -53,7 +57,6 @@ end
 
 function ComputeNegativeLogLikelihood(P,T,choices,InitalP)
     ll,alpha=ForwardPass(P,T,choices,InitalP)
-    #println("ll: ", ll)
     return ll
 end
 
@@ -147,23 +150,29 @@ end
 
 
 function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,past_rewards,T,InitialP,args,x,lower,upper,consts=0,y=0)
-        # println("hola",x[1])
         z=zeros(typeof(x[1]),length(x))
         z[:]=x[:]
         # for i in 1:length(x)
         #     z[i]=x[i]
         # end
         function MaxEmission(z)
+            if z!=z
+                println("Nan in max emision")
+                return 99999999
 
-            #println("hola2")
+                #error("Fucking nans in MaxEmission")
+            #else
+                #println("zzzz",z[1]," ",z[2])
+            else
+                if z!=z
+                    error("Fucking nans in MaxEmission")
+                end
+                P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z,consts,y)
 
-            #println("hola4")
-            #println("sigma: ",y[1])
-            P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z,consts,y)
-            #println("P1: ",P[1]," z: ",z)
-
-            ll=ComputeNegativeLogLikelihood(P,T,choices,InitialP)
-            return ll
+                ll=ComputeNegativeLogLikelihood(P,T,choices,InitialP)
+                #println("ll: ",ll)
+                return ll
+            end
         end
 
         #Optim.optimize( MaxEmission,x)
@@ -172,9 +181,13 @@ function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,
         #res=optimize(MaxEmission, xx, LBFGS(); autodiff = :forward)
         #lower=[0.05]
         #upper=[3]
-        #println("xx: ",x," lower: ",lower," upper: ",upper)
 
-        res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking(order=2))),Optim.Options(show_trace=false); autodiff = :forward)
+        #res=optimize(MaxEmission,lower,upper, z, Fminbox(GradientDescent(linesearch = BackTracking())),Optim.Options(g_tol=1e-5); autodiff = :forward)
+
+
+        #res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking())),Optim.Options(show_trace=true,show_every=1,g_tol=1e-5); autodiff = :forward)
+        res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking())),Optim.Options(g_tol=1e-5); autodiff = :forward)
+
         #res=optimize(MaxEmission,lower,upper, xx, Fminbox(LBFGS()),Optim.Options(show_trace=true); autodiff = :forward)
         #res=optimize(MaxEmission, xx, LBFGS(); autodiff = :forward)
         z=res.minimizer
@@ -203,7 +216,6 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
 
     """
 
-    println("hello I am fit")
     z=zeros(typeof(x[1]),length(x))
     z[:]=x[:]
 
@@ -216,7 +228,6 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
     TNew=zeros(Nstates,Nstates)
     PNew=zeros(Nstates,Nout)
     PiNew=zero(Nstates)
-    #println("const: ",consts)
     POld=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts,y)
     TOld=TInitial[:,:]
     PiOld=PiInitial[:]
@@ -226,7 +237,6 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
     #while all(tol.<delta) aixo esta malament
     while DeltaAux>tol
 
-        #println(PAll[iter,:,:])
 
 
         PiNew,AlphaNew,BetaNew,GammaNew,XiNew,llNew=ProbabilityState(POld,TOld,choices,PiOld)
@@ -243,14 +253,13 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
 
         #Piiter[iter+1,:]=auxGamma[1,:]
         #PiNew=auxGamma[1,:]
-
+        if TOld!=TOld
+            error("Nan in T")
+        end
         ######## Compute new emission probabilities ##########
 
         minimizer,PNew,llNew=MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,past_rewards,TOld,POld,args,z,lower,upper,consts,y)
         z=minimizer
-        # println("sigma:", z[1]," ",z)
-        # println("llNew",llNew)
-        println("T:", TNew)
 
 
 
@@ -267,7 +276,6 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
         # end
 
         #delta=abs.(delta)
-        #println("delta: ", delta)
 
         #iter=iter+1
 
@@ -285,7 +293,6 @@ function fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rew
     end
 
     ll=ComputeNegativeLogLikelihood(PNew,TNew,choices,PiNew)
-    #println("iter: ",iter, " ll: ",ll)
     param=vcat(TNew[1,1],TNew[2,2],z)
 
     return PNew,TNew,PiNew,ll,param,z
@@ -297,7 +304,6 @@ end
 
 
 function ComputeConfidenceIntervals(stim,delays,idelays,choices,past_choices,past_rewards,args,x,lower,upper,TFit,PiFit,PossibleOutputs,consts=0,y=0,z_aux=1.96)
-    println(consts,y)
     Nstates=length(TFit[1,:])
     Nout=length(PossibleOutputs)
     PARAM=zeros(typeof(TFit[1]),Nstates+length(x))
@@ -327,10 +333,24 @@ function ComputeConfidenceIntervals(stim,delays,idelays,choices,past_choices,pas
     end
 
     H=ForwardDiff.hessian(ComputeNegativeLogLikelihood2, PARAM)
+    #This Hessian is directly the Information matrix because we compute the
+    #negative likelihood
+    println("ci PARAM",PARAM)
+    #println(H)
+    ci=zeros(length(PARAM))
+    try
+        HI=inv(H)
+        if all(diag(HI).>0)
+            ci[:]=z_aux.*sqrt.(diag(HI))
+            println("A minimum ", diag(HI))
+        else
+            ci[:]=zeros(length(PARAM)).-1.0
+            println("Not a minimum ", diag(HI))
+        end
 
-    HI=inv(H)
-    ci=z_aux.*sqrt.(diag(HI))
-
+    catch e
+        ci[:]=zeros(length(PARAM)).-2.0
+        println("H is not invertible")
+    end
     return ci
-
 end
