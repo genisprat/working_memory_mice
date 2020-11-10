@@ -280,15 +280,15 @@ function Transition_probabilites(coef,xL,xM,xR,sigma,t)
     if aux!=aux
         maximum_mu=max_mu(coef)
         if coef[1]>maximum_mu
-            prr=1.0
-            prl=1 #The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
+            prr=1.0 -epsilon
+            prl=1.0 -epsilon#The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
         elseif coef[1]<-maximum_mu
-            prr=0.
-            prl=0. #The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
+            prr=0. +epsilon
+            prl=0. +epsilon#The limit of prs when sigma tends to 0 depends goes to 1 if mu>0
 
         else
-            prr=1.0
-            prl=0.0
+            prr=1.0 -epsilon
+            prl=0.0 +epsilon
         end
     else
         prr=prs+aux*(1-prs)
@@ -345,7 +345,9 @@ function PR_1stim(coef,sigma,x0,mu_b,delay)
         prr,prl=Transition_probabilites(coef_wm,roots[1],roots[2],roots[3],sigma,delay)
         pr=pr0*prr+(1-pr0)*prl
     end
-
+    #For numerical reasons I keep pr between epsilon and 1-epsilon
+    pr=maximum([epsilon,pr])
+    pr=minimum((1-epsilon,pr))
     return pr
 
 end
@@ -452,6 +454,7 @@ function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewar
     if x!=x
         error("Nans in x", x)
     end
+
     Ntrials=length(stim)
     Nout=2
     P=zeros(typeof(x[1]),Ntrials,Nout,Nout)
@@ -461,6 +464,10 @@ function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewar
         error("Nans in param",param)
     end
     param["sigma"]=sqrt(param["sigma"]^2) #make sure it is not negative in case i do not use FminBox
+    param["c2"]=sqrt(param["c2"]^2)
+    param["c4"]=sqrt(param["c4"]^2)
+    param["mu_k"]=sqrt(param["mu_k"]^2)
+    #println(param)
     PrDw=zeros(typeof(x[1]),2,length(delays))
     #Compute prob of Right for each combination of stimulus and delay###
 
@@ -471,13 +478,11 @@ function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewar
         coef=[MU[1]*param["mu_k"],param["c2"],param["c4"]]
         PrDw[1,idelay]=PR_1stim(coef,param["sigma"],param["x0"],param["mu_b"],delays[idelay])
 
-
         coef=[MU[2]*param["mu_k"],param["c2"],param["c4"]]
         PrDw[2,idelay]=PR_1stim(coef,param["sigma"],param["x0"],param["mu_b"],delays[idelay])
 
     end
 
-    ###### Pr for history bias module, module=1 #################
 
     for itrial in 1:Ntrials
         pr=PrDw[stim[itrial],idelays[itrial]]
@@ -486,12 +491,23 @@ function ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewar
     end
 
 
+    ###### Pr for history bias module, module=1 #################
 
     for itrial in 1:Ntrials
 
         pr=history_bias_module_1stim(param["beta_w"],param["beta_l"],param["tau_w"],param["tau_l"],past_choices[itrial,:],past_rewards[itrial,:])
         P[itrial,2,1]=pr
         P[itrial,2,2]=1-pr
+    end
+    if PrDw!=PrDw
+        error("Nans in PrDw")
+    end
+    if P!=P
+        error("Nans in P")
+    end
+
+    if !all(x->x!=Inf,PrDw)
+        error("Inf in PrDw")
     end
 
     return P

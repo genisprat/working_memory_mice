@@ -3,6 +3,7 @@
 @everywhere using LineSearches
 @everywhere using Optim
 @everywhere using LinearAlgebra
+#@everywhere using DualNumbers
 
 #cluster
 @everywhere path_functions="/home/hcli64/hcli64751/wm_mice/scripts/functions/"
@@ -34,7 +35,8 @@ function ForwardPass(P,T,choices,InitalP)
     Ntrials=length(choices)
     PFwdState=zeros(typeof(P[1]),Ntrials,Nout)
     Norm_coeficcient=zeros(typeof(P[1]),Ntrials)
-
+    #println("T: ", T)
+    #println("P:", realpart(P[1,1,2])[1]," ",realpart(P[1,1,1]))
     for itrial in 1:Ntrials
         for istate in 1:Nstate
             if itrial==1
@@ -49,7 +51,9 @@ function ForwardPass(P,T,choices,InitalP)
         PFwdState[itrial,:]=PFwdState[itrial,:]./(sum(PFwdState[itrial,:]))
 
     end
-
+    if PFwdState!=PFwdState
+        error("Nan PFwdState")
+    end
 
     return -sum(log.(Norm_coeficcient)),PFwdState
 end
@@ -157,7 +161,7 @@ function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,
         # end
         function MaxEmission(z)
             if z!=z
-                println("Nan in max emision")
+                println("Nan in max emision",z)
                 return 99999999
 
                 #error("Fucking nans in MaxEmission")
@@ -168,10 +172,19 @@ function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,
                     error("Fucking nans in MaxEmission")
                 end
                 P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z,consts,y)
+                if P !=P
+                    error("Fucking nans in Ps: ",z)
+                end
+                if T !=T
+                    error("Fucking nans in Ps: ",z)
+                end
 
                 ll=ComputeNegativeLogLikelihood(P,T,choices,InitialP)
                 #println("ll: ",ll)
-                return ll
+                if ll !=ll
+                    error("Fucking nans in ComputeNegativeLogLikelihood: ",z)
+                end
+                return ll + sum(0.05*abs.(z))
             end
         end
 
@@ -183,15 +196,28 @@ function MaximizeEmissionProbabilities(stim,delays,idelays,choices,past_choices,
         #upper=[3]
 
         #res=optimize(MaxEmission,lower,upper, z, Fminbox(GradientDescent(linesearch = BackTracking())),Optim.Options(g_tol=1e-5); autodiff = :forward)
+        if z!=z
+            error("optimization is feed with  NaN:",z)
+        end
 
 
-        #res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking())),Optim.Options(show_trace=true,show_every=1,g_tol=1e-5); autodiff = :forward)
-        res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking())),Optim.Options(g_tol=1e-5); autodiff = :forward)
+        res=optimize(MaxEmission, z, NelderMead() )
+
+        #res=optimize(MaxEmission, z, LBFGS(linesearch = BackTracking(order=2),alphaguess = InitialStatic(scaled=true) ),Optim.Options(g_tol=1e-5,show_trace=false) ; autodiff = :forward)
+
+        #res=optimize(MaxEmission, z, GradientDescent(),Optim.Options(g_tol=1e-5,show_trace=false); autodiff = :forward)
+
+        #res=optimize(MaxEmission, z, LBFGS(linesearch = BackTracking(order=3) ),Optim.Options(g_tol=1e-5,show_trace=true); autodiff = :forward)
+
+        #res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking(order=2))),Optim.Options(show_trace=false,g_tol=1e-5); autodiff = :forward)
+        #res=optimize(MaxEmission,lower,upper, z, Fminbox(LBFGS(linesearch = BackTracking())),Optim.Options(g_tol=1e-5); autodiff = :forward)
 
         #res=optimize(MaxEmission,lower,upper, xx, Fminbox(LBFGS()),Optim.Options(show_trace=true); autodiff = :forward)
         #res=optimize(MaxEmission, xx, LBFGS(); autodiff = :forward)
         z=res.minimizer
-
+        if z!=z
+            error("optimization returns NaN:",z)
+        end
         Q=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,z,consts,y)
         #res=optimize(MaxEmission, xx, LBFGS())
 

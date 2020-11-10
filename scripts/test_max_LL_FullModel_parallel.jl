@@ -6,7 +6,7 @@ using SharedArrays
 # @everywhere using Optim
 # @everywhere using ForwardDiff
 using JLD
-
+#
 rmprocs(workers())
 addprocs(20)
 
@@ -162,14 +162,14 @@ for iDataSet in 1:NDataSets
 
         #XInitial[iDataSet,icondition,:]=[1.338313101716786, 1.714232602213121, 3.867537840921497, 3.9042024199430245, 4.752198682714197, 2.332897738999492, 3.4311984203851242, -3.868925326136652]
         #XInitial[iDataSet,icondition,:]=x
-        println("XInitial:", XInitial[iDataSet,icondition,:])
-        println("Tinitial: ", TInitial)
-        println("PiInitial: ", PiInitial[iDataSet,icondition,:])
+        #println("XInitial:", XInitial[iDataSet,icondition,:])
+        #println("Tinitial: ", TInitial)
+        #println("PiInitial: ", PiInitial[iDataSet,icondition,:])
 
 
         PNew,TNew,PiNew,Ll[iDataSet,icondition],ParamFit[iDataSet,icondition,:],xfit=fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rewards,args,XInitial[iDataSet,icondition,:],lower,upper,TInitial,PiInitial[iDataSet,icondition,:],PossibleOutputs,consts,y)
 
-        if xfit!=xfit | TNew=!TNew
+        if xfit!=xfit || TNew!=TNew
             ConfideceIntervals[iDataSet,icondition,:]=-7*ones(length(ConfideceIntervals[iDataSet,icondition,:]))
         else
             ConfideceIntervals[iDataSet,icondition,:]=ComputeConfidenceIntervals(stim,delays,idelays,choices,past_choices,past_rewards,args,xfit,lower,upper,TNew,PiNew,PossibleOutputs,consts,y)
