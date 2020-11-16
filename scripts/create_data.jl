@@ -1,157 +1,250 @@
 using PyPlot
 using Statistics
-using Optim
-using ForwardDiff
-using JLD
-using LineSearches
-
-path_functions="/home/genis/wm_mice/"
+path_functions="/home/genis/wm_mice/scripts/functions/"
 path_figures="/home/genis/wm_mice/figures/"
 
 include(path_functions*"functions_wm_mice.jl")
 include(path_functions*"function_simulations.jl")
-include(path_functions*"functions_mle.jl")
 
+
+
+
+consts=["mu_k","c2","c4","mu_b","beta_w","tau_w","tau_l", "mu0_a","tau_a"]
+y=[    0.3,  1.2, 1.0, -0.00,     3.0,     10,     10,  0.1,3]
+
+args=["sigma","x0","beta_l"]
+x=[0.3,-0.1,-1.0]
 
 PDwDw=0.9
 PBiasBias=0.1
-PrDw=0.9
-PrBias=0.3
-
-
-
-
-consts=["mu_k","c2","c4","mu_b","beta_w","tau_w","tau_l"]
-y=[    0.3,  1.2, 1.0, -0.05,     3.0,     10,     10]
-
-args=["sigma","x0","beta_l"]
-x=[0.3,0.15,-1.0]
-
-param=make_dict(args,x,consts,y)
-delays=[0.0,100,200,300,500,800,1000]
-Ntrials=Int(1e3)
-#choices,state,stim,past_choices,past_rewards,idelays=create_data(Ntrials,delays,args,x)
-
 
 T=[PDwDw 1-PDwDw; 1-PBiasBias PBiasBias]
-PiInitialOriginal=[0 1]
-#
-choices,state,stim,past_choices,past_rewards,idelays=create_data(Ntrials,delays,T,args,x,consts,y)
-
-############## sanity checks data ################################3
-#pr,pstate=Compute_negative_LL_hmm_module(PDwDw,PBiasBias,PrDw,PrBias,choices)
-#ll=Compute_negative_LL_hmm_module(PDwDw,PBiasBias,PrDw,PrBias,choices)
-
-#xx=zeros(typeof(SIGMA[1]),1)
-# indexDw=findall(x->x==1,state[1:Ntrials])
-# indexBias=findall(x->x==0,state[1:Ntrials])
-# println(mean((choices[indexDw].+1)./2)," ",mean((choices[indexBias].+1)./2))
-# figure()
-#
-# plot((choices[1:Nt].+1)/2,"k.")
-#
-# plot(state[1:Nt],"k-")
-# plot(pstate[1:Nt],".r--")
-#
 
 
 
-################ LL vs sigma ###########
-# PDwVector=0.05:0.05:0.95
-# PBiasVector=0.05:0.05:0.95
-#
-#
-# P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts,y)
-# ll=ComputeNegativeLogLikelihood(P,T,choices,PiInitial)
-#
-# SIGMA=0.05:0.01:1
-# Ll=zeros(length(SIGMA))
-# for isigma in 1:length(SIGMA)
-#         x[1]=SIGMA[isigma]
-#         P=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts,y)
-#         Ll[isigma]=ComputeNegativeLogLikelihood(P,T,choices,PiInitial)
-# end
-#
-# figure()
-# plot(SIGMA,Ll)
+param=make_dict2(args,x)
+delays=[0.0,100,200,300,500,800,1000]
+Ntrials=Int(1e6)
+choices,rewards,state,stim,past_choices,past_rewards,idelays,BiasAttraction=create_data(Ntrials,delays,T,args,x,consts,y)
+#change stim from 1,2 to -1,1
+#a=findall(x->x==1,stim)
+#b=findall(x->x==-1,stim)
+# stim[a].=-1
+# stim[b].=1
+
+############### state transitions ##############
 
 
+figure()
+PyPlot.plot(state[1:300])
+xlabel("Trial number")
+ylabel("State")
+show()
+savefig(path_figures*"state_time.png")
 
-############## fitting ############
-lower=[0.05,-1.0,-10.0]
-upper=[3.0,1.0,10.0]
-PossibleOutputs=[1,2]
+##############  P correct vs delay ############
+Pc_delay=zeros(length(delays))
+PcDwDelay=zeros(length(delays))
+PcBiasDelay=zeros(length(delays))
 
-#### compute loglikelihood Original ####
-POriginal=ComputeEmissionProb(stim,delays,idelays,choices,past_choices,past_rewards,args,x,consts,y)
-LlOriginal=ComputeNegativeLogLikelihood(POriginal,T,choices,PiInitialOriginal)
+for idelay in 1:length(delays)
+    println(idelay)
+    index=findall(x->x==idelay,idelays)
+    Pc_delay[idelay]=mean( rewards[index])
+    state2=state[index]
+    rewards2=rewards[index]
+    index_dw=findall(x->x==1,state2)
+    index_bias=findall(x->x==2,state2)
 
-
-Nconditions=2
-Nstates=2
-XInitial=zeros(Nconditions,length(lower))
-TInitialAll=zeros(Nconditions,Nstates,Nstates)
-ConfideceIntervals=zeros(Nconditions,length(lower)+Nstates)
-Ll=zeros(Nconditions)
-ParamFit=zeros(Nconditions,length(lower)+Nstates)
-PiInitial=zeros(Nconditions,Nstates)
+    PcDwDelay[idelay]=mean( rewards2[index_dw])
+    PcBiasDelay[idelay]=mean( rewards2[index_bias])
 
 
-for icondition in 1:Nconditions
-    println("icondition:", icondition)
-    #random initial conditions
-    for iparam in 1:length(lower)
-        XInitial[icondition,iparam]=lower[iparam]+ (upper[iparam]-lower[iparam])*rand()
-    end
+end
 
-    pdwdw=rand()
-    pbiasbias=rand()
-    TInitial=[pdwdw 1-pdwdw ; 1-pbiasbias pbiasbias]
-    TInitialAll[icondition,:,:]=TInitial
-    aux=rand()
-    PiInitial[icondition,1]=aux
-    PiInitial[icondition,2]=1-aux
+figure()
+PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
+PyPlot.plot(delays,Pc_delay,"o-",label="All trials")
+PyPlot.plot(delays,PcDwDelay,"o-",label="Dw module")
+PyPlot.plot(delays,PcBiasDelay,"o-",label="Bias module")
 
-    PNew,TNew,PiNew,Ll[icondition],ParamFit[icondition,:],xfit=fitBaumWelchAlgorithm(stim,delays,idelays,choices,past_choices,past_rewards,args,XInitial[icondition,:],lower,upper,TInitial,PiInitial[icondition,:],PossibleOutputs,consts,y)
-    ConfideceIntervals[icondition,:]=ComputeConfidenceIntervals(stim,delays,idelays,choices,past_choices,past_rewards,args,xfit,lower,upper,TNew,PiNew,PossibleOutputs,consts,y)
+legend()
+xlabel("Delay")
+ylabel("Accuracy")
+show()
+savefig(path_figures*"Accuracy_delay.png")
+
+############### Prob repeat ############
+repeat=(choices.*past_choices[:,1].+1)/2.
+reward=past_rewards[:,1]
+Prep_delay=zeros(length(delays))
+PrepDwDelay=zeros(length(delays))
+PrepBiasDelay=zeros(length(delays))
+
+PrepBiasDelayCorrect=zeros(length(delays))
+PrepBiasDelayError=zeros(length(delays))
+
+for idelay in 1:length(delays)
+    println(idelay)
+    index=findall(x->x==idelay,idelays)
+    Prep_delay[idelay]=mean(repeat[index])
+
+    state2=state[index]
+    repeat2=repeat[index]
+    reward2=rewards[index]
+
+    index_dw=findall(x->x==1,state2)
+    index_bias=findall(x->x==2,state2)
+    reward2=reward2[index_bias]
+    repeat3=repeat2[index_bias]
+
+    PrepDwDelay[idelay]=mean( repeat2[index_dw])
+    PrepBiasDelay[idelay]=mean( repeat2[index_bias])
+
+    indexCorrect=findall(x->x==1,reward2)
+    indexError=findall(x->x==0,reward2)
+
+    PrepBiasDelayCorrect[idelay]=mean( repeat3[indexCorrect])
+    PrepBiasDelayError[idelay]=mean( repeat3[indexError])
 
 end
 
 
-# LL=zeros(length(PDwVector),length(PBiasVector))
-# for idw in 1:length(PDwVector)
-#     for ibias in 1:length(PBiasVector)
-#         LL[idw,ibias]=Compute_negative_LL_hmm_module(PDwVector[idw],PBiasVector[ibias],PrDw,PrBias,choices)
-#         #LL[idw,ibias]=Compute_negative_LL_hmm_module(PDwDw,PBiasBias,PDwVector[idw],PBiasVector[ibias],choices)
+figure()
+PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
+
+PyPlot.plot(delays,Prep_delay,"o-",label="All trials")
+PyPlot.plot(delays,PrepDwDelay,"o-",label="Dw module")
+PyPlot.plot(delays,PrepBiasDelay,"o-",label="Bias module")
+legend()
+xlabel("Delay")
+ylabel("Probability of repeat")
+show()
+savefig(path_figures*"Prepeat_delay.png")
+
+
+figure()
+PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
+
+PyPlot.plot(delays,PrepBiasDelayCorrect,"o-",label="After Correct")
+PyPlot.plot(delays,PrepBiasDelayError,"o-",label="After Error")
+legend()
+xlabel("Delay")
+ylabel("Probability of repeat")
+savefig(path_figures*"Prepeat_AfterCorrect-Error_delay.png")
+
+show()
+
+
+############### Prob Right ############
+
+Pr=zeros(length(delays))
+PrBias=zeros(length(delays))
+PrDw=zeros(length(delays))
+
+choices_r=(choices.+1)/2
+
+for idelay in 1:length(delays)
+    index=findall(x->x==idelay,idelays)
+    Pr[idelay]=mean(choices_r[index])
+
+    state2=state[index]
+    choices_r2=choices_r[index]
+
+    index_dw=findall(x->x==1,state2)
+    index_bias=findall(x->x==2,state2)
+
+    PrBias[idelay]=mean(choices_r2[index_bias])
+    PrDw[idelay]=mean(choices_r2[index_dw])
+
+end
+
+
+figure()
+PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
+
+PyPlot.plot(delays,Pr,"o-",label="all trials")
 #
-#     end
+PyPlot.plot(delays,PrDw,"o-",label="Dw module")
+PyPlot.plot(delays,PrBias,"o-",label="Bias module")
+legend()
+xlabel("Delay")
+ylabel("P(d=R)")
+savefig(path_figures*"PR_delay.png")
+
+show()
+
+
+
+
+
+
+
+############### Prob Right| s=Right, choices-1=right choice-1=left ############
+
+Prr=zeros(length(delays))
+Prl=zeros(length(delays))
+
+PrBias=zeros(length(delays))
+PrDw=zeros(length(delays))
+
+choices_r=(choices.+1)/2
+#past_choice_r=(past_choice_r.+1)/2
+
+for idelay in 1:length(delays)
+    indexdelay= idelays.==idelay
+    index_r_current= stim.==1
+    index_r= past_choices[:,1].==1
+    index_l=past_choices[:,1].==-1
+
+    index_rd=(indexdelay.*index_r_current).*index_r
+
+    index_ld=(indexdelay.*index_r_current).*index_l
+
+    #println("size rd) ",size(index_rd) )
+    Prr[idelay]=mean(choices_r[index_rd])
+    Prl[idelay]=mean(choices_r[index_ld])
+
+
+    # state2=state[index]
+    # choices_r2=choices_r[index]
+    #
+    # index_dw=findall(x->x==1,state2)
+    # index_bias=findall(x->x==2,state2)
+    #
+    # PrBias[idelay]=mean(choices_r2[index_bias])
+    # PrDw[idelay]=mean(choices_r2[index_dw])
+
+end
+
+
+
+
+figure()
+PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
+
+PyPlot.plot(delays,Prr,"o-",label="X=R")
+PyPlot.plot(delays,Prl,"o-",label="X=L")
+#
+# PyPlot.plot(delays,PrDw,"o-",label="Dw module")
+# PyPlot.plot(delays,PrBias,"o-",label="Bias module")
+legend()
+xlabel("Delay")
+ylabel("P(d(t)=R|S(t)=R,d(t-1)=X)")
+savefig(path_figures*"PR_givenR_or_L_delay.png")
+
+show()
+
+
+# using Pandas
+# PAST_CHOICES=[]
+# PAST_REWARDS=[]
+# for itrial in 1:Ntrials
+#     push!(PAST_CHOICES,past_choices[itrial,:])
+#     push!(PAST_REWARDS,past_rewards[itrial,:])
 # end
-# figure()
-# imshow(LL,origin="lower",extent=[PBiasVector[1],PBiasVector[end],PDwVector[1],PDwVector[end]],aspect="auto",cmap="hot")
-# xlabel("PbiasBias")
-# ylabel("PDwDw")
-# plot([ PBiasBias],[PDwDw],"bo")
-#
-# #plot( [ PrBias],[PrDw],"bo")
-#
-#
-# a=findall(x->x==minimum(LL),LL)
-# plot([ PBiasVector[a[1][2]]],[PDwVector[a[1][1]]],"bs")
-#
-# colorbar()
-# show()
-
-
-
-
-# filename_save="/home/genis/wm_mice/synthetic_data/minimize_sigma_c2_Ntrials"*string(Ntrials)*".jld"
-#
-# filename_save="/home/genis/wm_mice/synthetic_data/minimize_sigma_c2_Ntrials"*string(Ntrials)*"_NDataSets"*string(NDataSets)*".jld"
-# filename_save="/home/genis/wm_mice/synthetic_data/minimize_betaw_betal_only_history_bias_Ntrials"*string(Ntrials)*".jld"
-# filename_save="/home/genis/wm_mice/synthetic_data/minimize_betaw_betal_only_history_bias_Ntrials"*string(Ntrials)*"_NDataSets"*string(NDataSets)*".jld"
-# filename_save="/home/genis/wm_mice/synthetic_data/minimize_sigma_c2_wm_only_Ntrials"*string(Ntrials)*"_NDataSets"*string(NDataSets)*".jld"
-filename_save="/home/genis/wm_mice/synthetic_data/minimize_sigma_x0_betal_pdwdw_pbiasbias_Ntrials"*string(Ntrials)*".jld"
-
-save(filename_save,"x",x,"args",args,"y",y,"consts",consts,"XInitial",XInitial,"Ll",Ll,
-"PiInitial",PiInitial,"TInitialAll",TInitialAll,"ConfideceIntervals",ConfideceIntervals,
-"LlOriginal",LlOriginal)
+# dict=Dict(:choices=>choices,:stim=>stim,:past_choices=>PAST_CHOICES,:past_rewards=>PAST_REWARDS,:idelays=>idelays)
+# df=Pandas.DataFrame(dict)
+# #
+# filename_save="/home/genis/wm_mice/synthetic_data/synthetic_data_attraction_bias.json"
+# Pandas.to_json(df,filename_save)

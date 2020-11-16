@@ -1,3 +1,5 @@
+using Distributed
+
 @everywhere using ForwardDiff
 @everywhere using StatsBase
 @everywhere using LineSearches

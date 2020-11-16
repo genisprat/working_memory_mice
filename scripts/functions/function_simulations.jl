@@ -1,7 +1,7 @@
 using PyPlot
 using Statistics
 
-path_functions="/home/genis/wm_mice/"
+path_functions="/home/genis/wm_mice/scripts/functions/"
 
 include(path_functions*"functions_wm_mice.jl")
 

@@ -564,39 +564,81 @@ function compute_negativ_LL_gradient_hess(stim,delays,idelays,choices,past_choic
     return grads
 end
 
+function past_choices_rewards(choices,rewards,itrial,n)
+    past_choices=zeros(n)
+    past_rewards=zeros(n)
+    ini=maximum((1,itrial-n))
+    fi=itrial-1
+    j=1
+    for i in fi:-1:ini
+        past_choices[j]=choices[i]
+        past_rewards[j]=rewards[i]
+        j=j+1
+    end
+    return past_choices,past_rewards
+end
+
+function AttractionBias(choices,itrial,mu0a,tau_ab,n)
+    past_choices=zeros(n)
+
+    ini=maximum((1,itrial-n))
+    fi=itrial-1
+    j=1
+    for i in fi:-1:ini
+        past_choices[j]=choices[i]
+        j=j+1
+    end
+    t=0:(n-1)
+    ab=mu0a*sum(past_choices.*exp.(-t/tau_ab) )
+
+    return ab
+end
+
 
 
 
 function create_data(Ntrials,delays,T,args,x,consts=0,y=0)
 
     param=make_dict(args,x,consts,y)
-    stim=rand([1,2],Ntrials)
+    stim=rand([-1,1],Ntrials)
     MU=[-1,1]
-    past_choices=rand(-1:2:1,(Ntrials,10))
-    past_rewards=rand(0:1,(Ntrials,10))
-    idelays=sample(1:length(delays),Ntrials)
 
-
+    idelays=StatsBase.sample(1:length(delays),Ntrials)
+    n=10 ## number of trials back for the history bias module
+    PastChoices=zeros( (Ntrials,n) )
+    PastRewards=zeros((Ntrials,n))
     ### PR DW ####
-    PrDw=zeros(2,length(delays))
-    for idelay in 1:length(delays)
-        coef=[MU[1]*param["mu_k"],param["c2"],param["c4"]]
-        PrDw[1,idelay]=PR_1stim(coef,param["sigma"],param["x0"],param["mu_b"],delays[idelay])
-
-        coef=[MU[2]*param["mu_k"],param["c2"],param["c4"]]
-        PrDw[2,idelay]=PR_1stim(coef,param["sigma"],param["x0"],param["mu_b"],delays[idelay])
-    end
+    # PrDw=zeros(2,length(delays))
+    # for idelay in 1:length(delays)
+    #     coef=[MU[1]*param["mu_k"],param["c2"],param["c4"]]
+    #     PrDw[1,idelay]=PR_1stim(coef,param["sigma"],param["x0"],param["mu_b"],delays[idelay])
+    #
+    #     coef=[MU[2]*param["mu_k"],param["c2"],param["c4"]]
+    #     PrDw[2,idelay]=PR_1stim(coef,param["sigma"],param["x0"],param["mu_b"],delays[idelay])
+    # end
 
     state=zeros(Ntrials+1)
     choices=zeros(Int8,Ntrials)
-    state[1]=1
+    rewards=zeros(Int8,Ntrials)
 
+    state[1]=1
+    BiasAttraction=zeros(Ntrials+1)
+    println("size stim",size(stim),"size choices",size(choices))
+
+    #println("nslfjbn:" )
     for itrial in 1:Ntrials
-        Pr=0.0
+        PastChoices[itrial,:],PastRewards[itrial,:]=past_choices_rewards(choices,rewards,itrial,n)
+
         if state[itrial]==1
             #compute Pr for the DW module
-            Pr=PrDw[stim[itrial],idelays[itrial]]
+            #Pr=PrDw[stim[itrial],idelays[itrial]]
             #update state
+            ab=AttractionBias(choices,itrial,param["mu0_a"],param["tau_a"],n)
+            BiasAttraction[itrial]=ab
+            coef=[stim[itrial]*param["mu_k"],param["c2"],param["c4"]]
+            Pr=PR_1stim(coef,param["sigma"],param["x0"],(param["mu_b"]+ab)*param["mu_k"],delays[idelays[itrial]])
+
+
             if rand()<T[1,1]
                 state[itrial+1]=1
             else
@@ -605,7 +647,9 @@ function create_data(Ntrials,delays,T,args,x,consts=0,y=0)
 
         else
             #compute Pr for the bias module
-            Pr=history_bias_module_1stim(param["beta_w"],param["beta_l"],param["tau_w"],param["tau_l"],past_choices[itrial,:],past_rewards[itrial,:])
+            #println(n)
+
+            Pr=history_bias_module_1stim(param["beta_w"],param["beta_l"],param["tau_w"],param["tau_l"],PastChoices[itrial,:],PastRewards[itrial,:])
             #update state
             if rand()<T[2,2]
                 state[itrial+1]=2
@@ -619,13 +663,26 @@ function create_data(Ntrials,delays,T,args,x,consts=0,y=0)
         if rand()<Pr
             choices[itrial]=1
         else
-            choices[itrial]=2
+            choices[itrial]=-1
         end
+
+        if choices[itrial]*sign(stim[itrial])==1
+            rewards[itrial]=1
+        elseif choices[itrial]*sign(stim[itrial])==-1
+            rewards[itrial]=0
+        else
+            println("something wrong")
+        end
+
+
+
+
+
     end
 
     # stim 1,2 to stim -1,1#
 
-    return choices,state,stim,past_choices,past_rewards,idelays
+    return choices,rewards,state,stim,PastChoices,PastRewards,idelays,BiasAttraction
 end
 
 
@@ -681,14 +738,12 @@ end
 
 
 
-
-
 function create_data_WM(Ntrials,delays,args,x,consts=0,y=0)
 
     param=make_dict(args,x,consts,y)
     stim=rand([1,2],Ntrials)
     MU=[-1,1]
-    idelays=sample(1:length(delays),Ntrials)
+    idelays=StatsBase.sample(1:length(delays),Ntrials)
 
 
     ### PR DW ####
