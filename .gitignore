@@ -1,0 +1,6 @@
+*.json
+figures/
+results/
+proves/
+synthetic_data/
+

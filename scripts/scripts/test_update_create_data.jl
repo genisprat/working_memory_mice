@@ -1,6 +1,5 @@
 using PyPlot
 using Statistics
-using JLD
 path_functions="/home/genis/wm_mice/scripts/functions/"
 path_figures="/home/genis/wm_mice/figures/"
 
@@ -9,30 +8,15 @@ include(path_functions*"function_simulations.jl")
 
 
 
-#
-# consts=["mu_k","c2","c4","mu_b","beta_w","tau_w","tau_l", "mu0_a","tau_a"]
-# y=[    0.3,  1.2, 1.0, -0.00,     3.0,     10,     10,  0.1,3]
-#
-# args=["sigma","x0","beta_l"]
-# x=[0.3,-0.1,-1.0]
 
-# Repeating bias
-consts=["mu_k","c2","c4","mu_b","beta_r","tau_r","mu0_a","tau_a"]
-y=[    0.3,  1.2, 1.0, 0.00,     1.,     2,   0.0,1]
+consts=["mu_k","c2","c4","mu_b","beta_w","tau_w","tau_l", "mu0_a","tau_a"]
+y=[    0.3,  1.2, 1.0, -0.00,     3.0,     10,     10,  0.1,3]
 
-args=["sigma","x0"]
-x=[0.32,0.0]
+args=["sigma","x0","beta_l"]
+x=[0.3,-0.1,-1.0]
 
-#Saline
-# PDwDw=0.96
-# PBiasBias=0.85
-
-#Drug
 PDwDw=0.9
-PBiasBias=0.85
-#
-filename_save="/home/genis/wm_mice/synthetic_data/synthetic_data_WM09_repeating085.jld"
-
+PBiasBias=0.1
 
 T=[PDwDw 1-PDwDw; 1-PBiasBias PBiasBias]
 
@@ -40,10 +24,8 @@ T=[PDwDw 1-PDwDw; 1-PBiasBias PBiasBias]
 
 param=make_dict2(args,x)
 delays=[0.0,100,200,300,500,800,1000]
-Ntrials=Int(1e5)
+Ntrials=Int(1e6)
 choices,rewards,state,stim,past_choices,past_rewards,idelays,BiasAttraction=create_data(Ntrials,delays,T,args,x,consts,y)
-
-
 #change stim from 1,2 to -1,1
 #a=findall(x->x==1,stim)
 #b=findall(x->x==-1,stim)
@@ -82,15 +64,15 @@ end
 
 figure()
 PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
-PyPlot.plot(delays,Pc_delay,"ko-",label="All trials")
-PyPlot.plot(delays,PcDwDelay,"o-",color="orange",label="WM module")
-PyPlot.plot(delays,PcBiasDelay,"o-",color="purple",label="Repeating module")
+PyPlot.plot(delays,Pc_delay,"o-",label="All trials")
+PyPlot.plot(delays,PcDwDelay,"o-",label="Dw module")
+PyPlot.plot(delays,PcBiasDelay,"o-",label="Bias module")
 
 legend()
 xlabel("Delay")
 ylabel("Accuracy")
 show()
-savefig(path_figures*"Accuracy_delay.pdf")
+savefig(path_figures*"Accuracy_delay.png")
 
 ############### Prob repeat ############
 repeat=(choices.*past_choices[:,1].+1)/2.
@@ -131,14 +113,14 @@ end
 figure()
 PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
 
-PyPlot.plot(delays,Prep_delay,"ko-",label="All trials")
-PyPlot.plot(delays,PrepDwDelay,"o-",color="Orange",label="WM module")
-PyPlot.plot(delays,PrepBiasDelay,"o-",color="Purple",label="Repeating module")
+PyPlot.plot(delays,Prep_delay,"o-",label="All trials")
+PyPlot.plot(delays,PrepDwDelay,"o-",label="Dw module")
+PyPlot.plot(delays,PrepBiasDelay,"o-",label="Bias module")
 legend()
 xlabel("Delay")
 ylabel("Probability of repeat")
 show()
-savefig(path_figures*"Prepeat_delay.pdf")
+savefig(path_figures*"Prepeat_delay.png")
 
 
 figure()
@@ -241,36 +223,17 @@ end
 figure()
 PyPlot.plot([delays[1],delays[end]],[0.5,0.5],"k--")
 
-PyPlot.plot(delays,Prr,"ro-",label=L"$X^+$")
-PyPlot.plot(delays,Pc_delay,"ko-",label="All trials")
-PyPlot.plot(delays,Prl,"bo-",label=L"$Y^+$")
-
-
-
-
-
-
+PyPlot.plot(delays,Prr,"o-",label="X=R")
+PyPlot.plot(delays,Prl,"o-",label="X=L")
+#
 # PyPlot.plot(delays,PrDw,"o-",label="Dw module")
 # PyPlot.plot(delays,PrBias,"o-",label="Bias module")
 legend()
 xlabel("Delay")
-#ylabel("P(d(t)=R|S(t)=R,d(t-1)=X)")
-ylabel("Accuracy")
-
+ylabel("P(d(t)=R|S(t)=R,d(t-1)=X)")
 savefig(path_figures*"PR_givenR_or_L_delay.png")
 
 show()
-
-
-JLD.save(filename_save,"delays",delays,"args",args,"y",y,"consts",consts,"Prep_delay"
-,Prep_delay,"PrepDwDelay",PrepDwDelay,"PrepBiasDelay",PrepBiasDelay,"Prr",
-Prr,"Prl",Prl,"Pc_delay",Pc_delay,"PcDwDelay",PcDwDelay,"PcBiasDelay",
-PcBiasDelay,"choices",choices,"rewards",rewards,"state",state,"stim",stim,"idelays",idelays,
-"past_choices",past_choices,"past_rewards",past_rewards)
-
-
-
-
 
 
 # using Pandas
@@ -283,5 +246,5 @@ PcBiasDelay,"choices",choices,"rewards",rewards,"state",state,"stim",stim,"idela
 # dict=Dict(:choices=>choices,:stim=>stim,:past_choices=>PAST_CHOICES,:past_rewards=>PAST_REWARDS,:idelays=>idelays)
 # df=Pandas.DataFrame(dict)
 # #
-# filename_save="/home/genis/wm_mice/synthetic_data/synthetic_data_WM09_repeating05.json"
+# filename_save="/home/genis/wm_mice/synthetic_data/synthetic_data_attraction_bias.json"
 # Pandas.to_json(df,filename_save)
